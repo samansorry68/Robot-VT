@@ -3,93 +3,67 @@ import os
 import re
 import threading
 import requests
-import instaloader
 from flask import Flask, request, jsonify
 from openpyxl import Workbook
 
 app = Flask(__name__)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-BASE = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else ""
-_busy = set()
-_lock = threading.Lock()
+TOKEN = os.getenv("BOT_TOKEN", "").strip()
+API = f"https://api.telegram.org/bot{TOKEN}" if TOKEN else ""
 
-def tg(method, data=None, files=None, timeout=25):
-    if not BASE:
-        return None
+def telegram(method, data=None, files=None):
+    if not API:
+        return
     try:
-        return requests.post(f"{BASE}/{method}", data=data or {}, files=files, timeout=timeout)
+        return requests.post(f"{API}/{method}", data=data or {}, files=files, timeout=30)
     except requests.RequestException:
-        return None
-
-def send_message(chat_id, text):
-    tg("sendMessage", {"chat_id": chat_id, "text": text})
-
-def extract_shortcode(url):
-    match = re.search(r"instagram\.com/(?:p|reel|tv)/([A-Za-z0-9_-]+)", url)
-    return match.group(1) if match else None
-
-def process_instagram(chat_id, url):
-    shortcode = extract_shortcode(url)
-    if not shortcode:
-        send_message(chat_id, "لینک معتبر پست یا ریلز پیدا نشد. لینک عمومی اینستاگرام را دوباره بفرست.")
         return
-    send_message(chat_id, "لینک دریافت شد. در حال بررسی کامنت‌های عمومی؛ ممکن است اینستاگرام دسترسی را محدود کند...")
-    try:
-        loader = instaloader.Instaloader(quiet=True, download_pictures=False,
-                                        download_videos=False, download_video_thumbnails=False,
-                                        save_metadata=False, compress_json=False)
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-        rows = []
-        for comment in post.get_comments():
-            owner = getattr(comment, "owner", None)
-            username = getattr(owner, "username", "") if owner else ""
-            numeric_id = getattr(owner, "userid", "") if owner else ""
-            rows.append([username, str(numeric_id) if numeric_id else "", getattr(comment, "text", "")])
-        if not rows:
-            send_message(chat_id, "کامنتی دریافت نشد. ممکن است پست کامنت نداشته باشد یا اینستاگرام دسترسی را محدود کرده باشد.")
-            return
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Comments"
-        ws.append(["Username", "Numeric user ID (if available)", "Comment"])
-        for row in rows:
-            ws.append(row)
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-        tg("sendDocument", {"chat_id": chat_id, "caption": f"Robot V.T — {len(rows)} کامنت دریافت شد."},
-           files={"document": ("Robot_VT_comments.xlsx", output.getvalue(),
-                               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}, timeout=60)
-        send_message(chat_id, f"تمام شد: {len(rows)} کامنت در فایل Excel آماده شد. توجه: فقط اطلاعاتی که منبع در دسترس قرار داد وارد فایل شده است.")
-    except Exception:
-        send_message(chat_id, "نتوانستم کامنت‌ها را دریافت کنم. اینستاگرام ممکن است دسترسی سرور را مسدود کرده باشد یا پست محدود باشد. لینک عمومی دیگری را امتحان کن.")
 
-def handle_update(update):
-    message = update.get("message") or update.get("edited_message")
-    if not message or not message.get("chat"):
+def send(chat_id, text):
+    telegram("sendMessage", {"chat_id": chat_id, "text": text})
+
+def is_instagram_link(text):
+    return bool(re.search(r"https?://(?:www\\.)?instagram\\.com/(?:p|reel|tv)/[A-Za-z0-9_-]+", text))
+
+def make_excel(chat_id, lines):
+    rows = []
+    for line in lines:
+        if "|" in line:
+            username, comment = line.split("|", 1)
+            rows.append([username.strip(), comment.strip()])
+    if not rows:
+        send(chat_id, "فرمت درست نبود. هر کامنت را در یک خط بفرست: نام‌کاربری | متن کامنت")
         return
-    chat_id = message["chat"]["id"]
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Comments"
+    sheet.append(["Username", "Comment"])
+    for row in rows:
+        sheet.append(row)
+    buffer = io.BytesIO()
+    book.save(buffer)
+    buffer.seek(0)
+    telegram("sendDocument",
+             {"chat_id": chat_id, "caption": f"Robot V.T — {len(rows)} کامنت در فایل Excel"},
+             {"document": ("Robot_VT_comments.xlsx", buffer.getvalue(),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+
+def handle(update):
+    message = update.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
     text = (message.get("text") or "").strip()
+    if not chat_id or not text:
+        return
     if text.startswith("/start"):
-        send_message(chat_id, "سلام! 🤖 من Robot V.T هستم.\n\nلینک عمومی پست یا ریلز اینستاگرام را بفرست تا تلاش کنم کامنت‌های قابل‌دسترسی را در فایل Excel آماده کنم.\n\nمحدودیت: اینستاگرام ممکن است دسترسی را مسدود کند؛ دریافت همهٔ پست‌ها و همهٔ کامنت‌ها تضمین‌شده نیست.")
+        send(chat_id, "سلام! 🤖 به Robot V.T خوش آمدی.\n\nبرای ساخت فایل Excel از کامنت‌هایی که مجاز به استفاده از آن‌ها هستی، هر کامنت را در یک خط و با فرمت «نام‌کاربری | متن کامنت» بفرست.\n\nاگر لینک اینستاگرام بفرستی، راهنمای محدودیت دسترسی را می‌دهم. استخراج خودکار از هر پست نیازمند دسترسی رسمی و مجاز است و برای همهٔ پست‌ها ممکن نیست.")
         return
     if text.startswith("/help"):
-        send_message(chat_id, "فقط لینک عمومی یک پست یا ریلز اینستاگرام را بفرست. هرگز رمز اینستاگرام خود را ارسال نکن.")
+        send(chat_id, "برای خروجی Excel، هر کامنت را در خط جداگانه بنویس: نام‌کاربری | متن کامنت. رمز اینستاگرام را هرگز ارسال نکن.")
         return
-    shortcode = extract_shortcode(text)
-    if shortcode:
-        with _lock:
-            if chat_id in _busy:
-                send_message(chat_id, "درخواست قبلی هنوز در حال بررسی است؛ کمی صبر کن.")
-                return
-            _busy.add(chat_id)
-        try:
-            process_instagram(chat_id, text)
-        finally:
-            with _lock:
-                _busy.discard(chat_id)
-    else:
-        send_message(chat_id, "لطفاً لینک کامل یک پست یا ریلز عمومی اینستاگرام را بفرست. برای راهنما /help را بزن.")
+    if is_instagram_link(text):
+        send(chat_id, "لینک دریافت شد. استخراج خودکار کامنت‌های هر پست به دسترسی رسمی/مجاز اینستاگرام نیاز دارد و برای همهٔ پست‌ها در دسترس نیست. در این نسخه می‌توانی کامنت‌هایی را که مجاز به استفاده از آن‌ها هستی به صورت «نام‌کاربری | متن کامنت» در خط‌های جدا بفرستی تا فایل Excel ساخته شود.")
+        return
+    make_excel(chat_id, text.splitlines())
 
 @app.get("/")
 def home():
@@ -97,16 +71,20 @@ def home():
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "bot_token_configured": bool(BOT_TOKEN)})
+    return jsonify({"status": "ok", "bot_token_configured": bool(TOKEN)})
 
 @app.post("/telegram-webhook")
-def telegram_webhook():
+def webhook():
     update = request.get_json(silent=True) or {}
-    threading.Thread(target=handle_update, args=(update,), daemon=True).start()
+    threading.Thread(target=handle, args=(update,), daemon=True).start()
     return jsonify({"ok": True})
 
-if BOT_TOKEN and os.getenv("RENDER_EXTERNAL_URL"):
-    try:
-        tg("setWebhook", {"url": os.getenv("RENDER_EXTERNAL_URL").rstrip("/") + "/telegram-webhook"})
-    except Exception:
-        pass
+@app.get("/setup-webhook")
+def setup_webhook():
+    if not TOKEN:
+        return jsonify({"ok": False, "error": "BOT_TOKEN is missing"}), 400
+    base = os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+    if not base:
+        return jsonify({"ok": False, "error": "Set RENDER_EXTERNAL_URL to the deployed HTTPS URL"}), 400
+    response = telegram("setWebhook", {"url": base + "/telegram-webhook"})
+    return (response.text if response else "Telegram API request failed"), 200
