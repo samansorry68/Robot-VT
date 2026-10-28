@@ -36,7 +36,7 @@ def send(chat_id, text):
 def instagram_permalink(text):
     # Accept standard post/reel links even when surrounded by punctuation.
     match = re.search(
-        r"https?://(?:www\\.)?instagram\\.com/(p|reel|tv)/([A-Za-z0-9_-]+)(?:/)?(?:\\?[^\\s]*)?",
+        r"https?://(?:www\.)?instagram\.com/(p|reel|tv)/([A-Za-z0-9_-]+)(?:/)?(?:\?[^\s]*)?",
         text,
         re.IGNORECASE,
     )
@@ -48,7 +48,7 @@ def instagram_permalink(text):
 
 
 def contains_instagram_url(text):
-    return bool(re.search(r"https?://(?:[a-z0-9-]+\\.)?instagram\\.com/[^\\s]+", text, re.IGNORECASE))
+    return bool(re.search(r"https?://(?:[a-z0-9-]+\.)?instagram\.com/[^\s]+", text, re.IGNORECASE))
 
 def ig_get(path, params=None):
     if not IG_ACCESS_TOKEN:
