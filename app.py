@@ -34,16 +34,21 @@ def send(chat_id, text):
 
 
 def instagram_permalink(text):
+    # Accept standard post/reel links even when surrounded by punctuation.
     match = re.search(
-        r"https?://(?:www\.)?instagram\.com/(?:p|reel|tv)/[A-Za-z0-9_-]+/?(?:\?[^\s]*)?",
+        r"https?://(?:www\\.)?instagram\\.com/(p|reel|tv)/([A-Za-z0-9_-]+)(?:/)?(?:\\?[^\\s]*)?",
         text,
         re.IGNORECASE,
     )
     if not match:
         return None
-    parsed = urlparse(match.group(0))
-    return urlunparse((parsed.scheme, "www.instagram.com", parsed.path.rstrip("/") + "/", "", "", ""))
+    kind = match.group(1).lower()
+    shortcode = match.group(2)
+    return f"https://www.instagram.com/{kind}/{shortcode}/"
 
+
+def contains_instagram_url(text):
+    return bool(re.search(r"https?://(?:[a-z0-9-]+\\.)?instagram\\.com/[^\\s]+", text, re.IGNORECASE))
 
 def ig_get(path, params=None):
     if not IG_ACCESS_TOKEN:
@@ -186,6 +191,14 @@ def handle(update):
         return
 
     permalink = instagram_permalink(text)
+    if contains_instagram_url(text) and not permalink:
+        send(
+            chat_id,
+            "این لینک از اینستاگرام است، اما لینک مستقیم پست یا Reel نیست. "
+            "لطفاً خود پست را باز کن و از گزینه اشتراک‌گذاری، Copy link را بزن و همان لینک را بفرست."
+        )
+        return
+
     if permalink:
         if not IG_ACCESS_TOKEN or not IG_USER_ID:
             send(
