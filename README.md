@@ -1,11 +1,23 @@
-# Robot V.T
+# V.T Telegram Finder
 
-Telegram bot starter that receives Instagram links and creates Excel files from comment text the user is authorized to use.
+این نسخه پیام‌های **جدید** را که حساب تلگرام متصل‌شده اجازه دیدنشان را دارد، بر اساس کلمات کلیدی بررسی می‌کند و پیام‌های منطبق را به گروه مقصد می‌فرستد.
 
-## Render setup
-- Build command: `pip install -r requirements.txt`
-- Start command: `gunicorn app:app`
-- Add environment variable `BOT_TOKEN` using the secret from BotFather. Never commit the token to GitHub.
-- After deployment, open `https://YOUR-SERVICE.onrender.com/setup-webhook` once to register the Telegram webhook.
+## نکات مهم
+- این برنامه با نشست حساب کاربری تلگرام کار می‌کند؛ ربات BotFather به‌تنهایی پیام همه گروه‌هایی را که عضو آن‌ها هستید نمی‌بیند.
+- فقط پیام‌های جدید پس از روشن‌شدن سرویس بررسی می‌شوند؛ تاریخچه قدیمی اسکن نمی‌شود.
+- فایل‌های این شاخه هنوز روی سرور نصب و آزمایش نشده‌اند.
+- Worker شبانه‌روزی در Render به پلن پولی نیاز دارد؛ با استقرار این Blueprint ممکن است هزینه ایجاد شود. قبل از تأیید هر پلن پولی، قیمت را بررسی کنید.
+- هرگز \`API_HASH\` یا به‌خصوص \`SESSION_STRING\` را در چت، مخزن عمومی یا برای افراد دیگر نفرستید.
 
-Direct automatic collection from arbitrary Instagram posts is not included: it requires appropriate official/authorized access, and availability depends on Instagram permissions and the post.
+## متغیرهای محیطی لازم
+- \`API_ID\`: عددی که در \`my.telegram.org\` نمایش داده می‌شود.
+- \`API_HASH\`: مقدار محرمانه از همان صفحه.
+- \`SESSION_STRING\`: نشست حساب تلگرام که باید به‌صورت امن روی دستگاه مورداعتماد ساخته شود.
+- \`TARGET_CHAT\`: شناسه یا نام کاربری گروه مقصد. حساب باید امکان ارسال پیام به آن را داشته باشد.
+- \`KEYWORDS\`: کلمات کلیدی جداشده با ویرگول فارسی یا انگلیسی؛ مثال: \`استخدام,فروش خودرو,گوشی\`.
+
+## استقرار
+در Render یک Background Worker از مخزن و شاخه \`vt-telegram-finder\` بسازید، Build Command را \`pip install -r requirements.txt\` و Start Command را \`python app.py\` قرار دهید و متغیرهای بالا را در بخش Environment وارد کنید. هیچ‌کدام از مقادیر محرمانه را در فایل‌های GitHub ننویسید.
+
+## محدودیت
+این نسخه اولیه است و هنوز به متغیرهای محرمانه و آزمایش عملی نیاز دارد. پیش از استفاده واقعی، آن را با یک گروه آزمایشی بررسی کنید.
