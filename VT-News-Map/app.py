@@ -16,6 +16,8 @@ app.secret_key = os.environ.get("APP_SECRET", secrets.token_hex(32))
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+# Keep collected news on the server, not in the browser cookie session.
+RESULTS = {}
 
 REQUIRED = ["استان", "شهرستان", "عرض", "طول"]
 OPTIONAL = ["rss_url", "telegram_url"]
@@ -99,7 +101,7 @@ def collect(df, keywords):
 @app.route("/", methods=["GET"])
 def home():
     if not logged_in(): return redirect(url_for("login"))
-    return render_template("index.html", results=session.get("results", []), keywords=session.get("keywords", ""),
+    return render_template("index.html", results=RESULTS.get(session.get("sid", ""), []), keywords=session.get("keywords", ""),
                            username=session.get("username", ADMIN_USER))
 
 @app.route("/login", methods=["GET","POST"])
@@ -108,7 +110,7 @@ def login():
         if not ADMIN_PASSWORD:
             flash("مدیر سامانه هنوز ADMIN_PASSWORD را در تنظیمات هاست تعیین نکرده است.")
         elif request.form.get("username","") == ADMIN_USER and secrets.compare_digest(request.form.get("password",""), ADMIN_PASSWORD):
-            session.clear(); session["logged_in"] = True; session["username"] = ADMIN_USER
+            session.clear(); session["logged_in"] = True; session["username"] = ADMIN_USER; session["sid"] = secrets.token_urlsafe(18)
             return redirect(url_for("home"))
         else: flash("نام کاربری یا رمز عبور اشتباه است.")
     return render_template("login.html")
@@ -139,7 +141,7 @@ def scan():
     try:
         df = load_sources(file)
         results = collect(df, keywords)
-        session["results"] = results
+        RESULTS[session["sid"]] = results
         session["keywords"] = keywords
         flash(f"بررسی تمام شد؛ {len(results)} مورد مطابق کلمات کلیدی پیدا شد.")
     except Exception as e:
